@@ -102,6 +102,27 @@ jobs:
           FLEETWATCH_AGGREGATOR: ${{ github.workspace }}/apps/aggregator/build/fleetwatch-aggregator
         run: poetry run pytest -m integration -p no:cacheprovider --no-cov
 
+  bench-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: build aggregator
+        run: |
+          cmake -S apps/aggregator -B apps/aggregator/build \
+            -DCMAKE_BUILD_TYPE=Release -DFWAGG_BUILD_TESTS=OFF
+          cmake --build apps/aggregator/build -j
+      - run: pipx install "poetry==${POETRY_VERSION}"
+      - working-directory: apps/metrics
+        run: poetry install --no-interaction --no-ansi
+      - name: bench smoke + regression gate
+        working-directory: apps/metrics
+        env:
+          FLEETWATCH_AGGREGATOR: ${{ github.workspace }}/apps/aggregator/build/fleetwatch-aggregator
+        run: poetry run pytest tests/test_bench.py -p no:cacheprovider --no-cov
+
   build-images:
     runs-on: ubuntu-latest
     steps:

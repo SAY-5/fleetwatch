@@ -63,7 +63,7 @@ def test_build_request_shape() -> None:
 
 def test_compute_cpp_missing_binary_raises() -> None:
     with pytest.raises(FileNotFoundError):
-        aggregator.compute_cpp([_record()], 0.5, binary="/nonexistent/aggregator-binary")
+        aggregator.compute_cpp([_record()], 0.5, binary_path="/nonexistent/aggregator-binary")
 
 
 def test_aggregator_path_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

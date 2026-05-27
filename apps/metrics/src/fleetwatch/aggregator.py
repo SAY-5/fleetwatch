@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import struct
 import subprocess
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from .metrics_ref import BatchMetrics, ClassMetric
 from .schema import DetectionRecord
 
 _ENV_VAR = "FLEETWATCH_AGGREGATOR"
+_MAGIC = b"FWB1"
 
 
 def aggregator_path() -> str | None:
@@ -38,6 +40,41 @@ def aggregator_path() -> str | None:
     if candidate.exists():
         return str(candidate)
     return None
+
+
+def build_binary_request(records: list[DetectionRecord], iou_threshold: float) -> bytes:
+    """Encode the batch in the compact little-endian binary protocol (FWB1).
+
+    Roughly a fifth the size of the JSON request and parse-free on the C++ side,
+    so it removes the transport cost that dominates JSON at fleet scale.
+    """
+    # Build a class-name table; detections and ground truth reference it by id.
+    classes: dict[str, int] = {}
+    for r in records:
+        for d in r.detections:
+            if d.cls not in classes:
+                classes[d.cls] = len(classes)
+        for g in r.ground_truth:
+            if g.cls not in classes:
+                classes[g.cls] = len(classes)
+
+    parts: list[bytes] = [_MAGIC, struct.pack("<d", iou_threshold)]
+    parts.append(struct.pack("<I", len(classes)))
+    for name in classes:
+        encoded = name.encode("utf-8")
+        parts.append(struct.pack("<H", len(encoded)))
+        parts.append(encoded)
+
+    parts.append(struct.pack("<I", len(records)))
+    for r in records:
+        parts.append(struct.pack("<II", len(r.detections), len(r.ground_truth)))
+        for d in r.detections:
+            parts.append(struct.pack("<H", classes[d.cls]))
+            parts.append(struct.pack("<5d", *d.bbox, d.confidence))
+        for g in r.ground_truth:
+            parts.append(struct.pack("<H", classes[g.cls]))
+            parts.append(struct.pack("<4d", *g.bbox))
+    return b"".join(parts)
 
 
 def build_request(records: list[DetectionRecord], iou_threshold: float) -> str:
@@ -81,22 +118,36 @@ def _parse_response(text: str) -> BatchMetrics:
 def compute_cpp(
     records: list[DetectionRecord],
     iou_threshold: float = 0.5,
-    binary: str | None = None,
+    binary_path: str | None = None,
+    wire: str = "binary",
+    env: dict[str, str] | None = None,
 ) -> BatchMetrics:
-    """Compute batch metrics via the C++ aggregator subprocess."""
-    path = binary or aggregator_path()
+    """Compute batch metrics via the C++ aggregator subprocess.
+
+    ``wire`` selects the request encoding: ``"binary"`` (the compact FWB1 format,
+    default) or ``"json"``. The binary format removes the transport cost that
+    dominates JSON at fleet scale; both produce identical metrics.
+    """
+    path = binary_path or aggregator_path()
     if path is None:
         raise FileNotFoundError(
             "aggregator binary not found; set FLEETWATCH_AGGREGATOR or build it"
         )
-    request = build_request(records, iou_threshold)
+    if wire == "binary":
+        request = build_binary_request(records, iou_threshold)
+    elif wire == "json":
+        request = build_request(records, iou_threshold).encode("utf-8")
+    else:
+        raise ValueError(f"unknown wire format {wire}")
     proc = subprocess.run(
         [path],
         input=request,
         capture_output=True,
-        text=True,
         check=False,
+        env=env,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"aggregator failed (rc={proc.returncode}): {proc.stderr.strip()}")
-    return _parse_response(proc.stdout)
+        raise RuntimeError(
+            f"aggregator failed (rc={proc.returncode}): {proc.stderr.decode('utf-8').strip()}"
+        )
+    return _parse_response(proc.stdout.decode("utf-8"))

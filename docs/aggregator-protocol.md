@@ -52,6 +52,20 @@ Floats are written with 12 significant digits (`%.12g`). The Python reference
 and the C++ aggregator agree to within `1e-9` on every field; see
 [metrics.md](metrics.md) for why the tolerance is not exactly zero.
 
+## Binary protocol (FWB1)
+
+For fleet-scale batches the JSON request is replaced by a compact little-endian
+binary protocol. The aggregator auto-detects it by the 4-byte magic `FWB1` at
+the start of stdin and falls back to JSON otherwise, so both paths share one
+binary. The binary layout is a header (`magic`, `f64 iou_threshold`, a class-name
+table) followed by frames of fixed-width detection and ground-truth records; see
+`apps/aggregator/src/binproto.h`. It carries the same information in roughly a
+third of the bytes with no text parsing, which is what makes the C++ aggregator
+faster than the Python reference end-to-end at scale (see
+[bench.md](bench.md)). The Python client (`compute_cpp`) uses the binary wire by
+default and can be forced back to JSON with `wire="json"`; both produce identical
+metrics.
+
 ## Determinism
 
 The aggregator is deterministic for a given request. Matching sorts detections

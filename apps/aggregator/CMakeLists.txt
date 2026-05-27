@@ -17,6 +17,7 @@ add_library(fwagg
   src/prcurve.cpp
   src/map.cpp
   src/json.cpp
+  src/binproto.cpp
 )
 target_include_directories(fwagg PUBLIC src)
 
@@ -42,6 +43,7 @@ if(FWAGG_BUILD_TESTS)
     tests/test_prcurve.cpp
     tests/test_map.cpp
     tests/test_json.cpp
+    tests/test_binproto.cpp
   )
   target_link_libraries(fwagg_tests PRIVATE fwagg GTest::gtest_main)
   include(GoogleTest)

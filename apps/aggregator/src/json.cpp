@@ -104,30 +104,17 @@ class Reader {
 
   double parse_number() {
     skip_ws();
-    const size_t start = i_;
-    if (i_ < s_.size() && (s_[i_] == '-' || s_[i_] == '+')) {
-      ++i_;
-    }
-    bool any = false;
-    while (i_ < s_.size() && (std::isdigit(static_cast<unsigned char>(s_[i_])) || s_[i_] == '.' ||
-                              s_[i_] == 'e' || s_[i_] == 'E' || s_[i_] == '+' || s_[i_] == '-')) {
-      any = true;
-      ++i_;
-    }
-    if (!any) {
+    // strtod scans straight from the buffer: no per-number allocation, and it
+    // returns subnormal results instead of throwing the way std::stod does.
+    const char* base = s_.c_str();
+    const char* cur = base + i_;
+    char* end = nullptr;
+    errno = 0;
+    const double v = std::strtod(cur, &end);
+    if (end == cur) {
       throw ParseError("expected number");
     }
-    // strtod is used instead of std::stod because std::stod throws
-    // std::out_of_range on subnormal results (values that underflow toward
-    // zero), which are perfectly valid JSON numbers. strtod returns the
-    // rounded value and signals range issues via errno without throwing.
-    const std::string token = s_.substr(start, i_ - start);
-    errno = 0;
-    char* end = nullptr;
-    const double v = std::strtod(token.c_str(), &end);
-    if (end != token.c_str() + token.size()) {
-      throw ParseError("invalid number");
-    }
+    i_ = static_cast<size_t>(end - base);
     return v;
   }
 
