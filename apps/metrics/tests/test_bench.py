@@ -21,6 +21,15 @@ def test_smoke_bench_runs() -> None:
     assert result.binary_bytes < result.json_bytes
 
 
+def test_bench_without_aggregator_reports_nan(monkeypatch: pytest.MonkeyPatch) -> None:
+    # When the binary is absent the cpp timings are NaN but the bench still runs.
+    monkeypatch.setattr(bench, "aggregator_path", lambda: None)
+    result = bench.run("smoke")
+    assert math.isnan(result.cpp_sec)
+    assert math.isnan(result.speedup)
+    assert result.python_sec >= 0.0
+
+
 @pytest.mark.skipif(aggregator_path() is None, reason="aggregator not built")
 def test_smoke_bench_reports_speedup() -> None:
     result = bench.run("smoke")
@@ -41,6 +50,17 @@ def test_regress_writes_baseline_then_passes(
     assert "speedup" in stored
 
 
+def test_regress_passes_against_low_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A baseline of 0 means any non-negative speedup clears the floor, so the
+    # compare-and-pass branch runs without needing the C++ binary.
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"scale": "smoke", "speedup": 0.0}))
+    monkeypatch.setattr(bench, "_BASELINE", baseline)
+    assert bench.regress(0.30, "smoke") == 0
+
+
 @pytest.mark.skipif(aggregator_path() is None, reason="aggregator not built")
 def test_regress_flags_a_collapsed_speedup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -50,3 +70,18 @@ def test_regress_flags_a_collapsed_speedup(
     baseline.write_text(json.dumps({"scale": "smoke", "speedup": 1000.0}))
     monkeypatch.setattr(bench, "_BASELINE", baseline)
     assert bench.regress(0.30, "smoke") == 1
+
+
+def test_main_runs_default_scale(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["fleetwatch-bench", "--scale", "smoke"])
+    assert bench.main() == 0
+
+
+def test_main_regress_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"scale": "smoke", "speedup": 0.0}))
+    monkeypatch.setattr(bench, "_BASELINE", baseline)
+    monkeypatch.setattr(
+        "sys.argv", ["fleetwatch-bench", "--scale", "smoke", "--regress", "0.30"]
+    )
+    assert bench.main() == 0

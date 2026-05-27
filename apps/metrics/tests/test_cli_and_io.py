@@ -61,6 +61,55 @@ def test_build_request_shape() -> None:
     assert '"frames"' in req
 
 
+def test_binary_request_has_magic_and_is_smaller() -> None:
+    recs = [
+        DetectionRecord.model_validate(
+            {
+                "unit_id": "u",
+                "frame_id": 0,
+                "timestamp": 0.0,
+                "condition": {"lighting": "day", "weather": "clear", "distance_band": "near"},
+                "detections": [{"class": "car", "bbox": [0, 0, 10, 10], "confidence": 0.9}],
+                "ground_truth": [{"class": "car", "bbox": [0, 0, 10, 10]}],
+            }
+        )
+    ]
+    binary = aggregator.build_binary_request(recs, 0.5)
+    assert binary.startswith(b"FWB1")
+    assert len(binary) < len(aggregator.build_request(recs, 0.5).encode())
+
+
+def test_compute_cpp_rejects_unknown_wire() -> None:
+    with pytest.raises(ValueError, match="unknown wire"):
+        aggregator.compute_cpp([_record()], 0.5, binary_path="/bin/true", wire="protobuf")
+
+
+def _fake_aggregator(tmp_path: Path, body: str, rc: int = 0) -> str:
+    script = tmp_path / "fake-agg"
+    script.write_text(f'#!/bin/sh\ncat > /dev/null\nprintf %s {body!r}\nexit {rc}\n')
+    script.chmod(0o755)
+    return str(script)
+
+
+def test_compute_cpp_parses_a_canned_response(tmp_path: Path) -> None:
+    response = (
+        '{"iou_threshold":0.5,"map":1.0,"micro_precision":1.0,"micro_recall":1.0,'
+        '"micro_f1":1.0,"per_class":[{"class":"car","tp":1,"fp":0,"fn":0,'
+        '"precision":1.0,"recall":1.0,"f1":1.0,"ap":1.0}]}'
+    )
+    fake = _fake_aggregator(tmp_path, response)
+    for wire in ("binary", "json"):
+        m = aggregator.compute_cpp([_record()], 0.5, binary_path=fake, wire=wire)
+        assert m.map == 1.0
+        assert m.per_class[0].cls == "car"
+
+
+def test_compute_cpp_raises_on_nonzero_exit(tmp_path: Path) -> None:
+    fake = _fake_aggregator(tmp_path, "boom", rc=2)
+    with pytest.raises(RuntimeError, match="aggregator failed"):
+        aggregator.compute_cpp([_record()], 0.5, binary_path=fake)
+
+
 def test_compute_cpp_missing_binary_raises() -> None:
     with pytest.raises(FileNotFoundError):
         aggregator.compute_cpp([_record()], 0.5, binary_path="/nonexistent/aggregator-binary")
