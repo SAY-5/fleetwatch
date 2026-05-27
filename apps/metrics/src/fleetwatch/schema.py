@@ -8,24 +8,24 @@ pixel coordinates with ``x2 > x1`` and ``y2 > y1``.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class Lighting(str, Enum):
+class Lighting(StrEnum):
     DAY = "day"
     NIGHT = "night"
     DUSK = "dusk"
 
 
-class Weather(str, Enum):
+class Weather(StrEnum):
     CLEAR = "clear"
     RAIN = "rain"
     FOG = "fog"
 
 
-class DistanceBand(str, Enum):
+class DistanceBand(StrEnum):
     NEAR = "near"
     MID = "mid"
     FAR = "far"
