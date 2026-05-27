@@ -28,7 +28,22 @@
   {% endfor %}
 </table>
 
-<h2>Condition heatmap <span class="legend">mean recall per unit x condition</span></h2>
+{% if model.attributions %}
+<h2>Drift attribution <span class="legend">which condition drove each degradation</span></h2>
+<table>
+  <tr><th>unit</th><th>class</th><th>driver</th><th>delta</th></tr>
+  {% for a in model.attributions %}
+  <tr>
+    <td>{{ a.unit_id }}</td>
+    <td>{{ a.cls }}</td>
+    <td>{% if a.driver_axis %}{{ a.driver_axis }}={{ a.driver_value }}{% else %}-{% endif %}</td>
+    <td class="bad">{{ "%.3f"|format(a.driver_delta) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>Condition heatmap <span class="legend">recall delta per unit x condition</span></h2>
 <table>
   <tr><th>unit</th>{% for c in model.conditions %}<th>{{ c }}</th>{% endfor %}</tr>
   {% for u in model.units %}
@@ -38,14 +53,17 @@
       {% set cell = (model.heatmap | selectattr("unit_id", "equalto", u.unit_id)
                      | selectattr("condition", "equalto", c) | list | first) %}
       {% if cell %}
-        {% set v = cell.metric_value %}
-        <td><span class="cell"
-            style="background: hsl({{ (v * 120) | round(0) }}, 70%, 55%)">
-            {{ "%.2f"|format(v) }}</span></td>
+        {# colour by delta: red for degradation, green for improvement #}
+        {% set d = cell.delta %}
+        {% set hue = 60 + (d * 600) %}
+        {% if hue < 0 %}{% set hue = 0 %}{% elif hue > 120 %}{% set hue = 120 %}{% endif %}
+        <td><span class="cell" title="mean {{ '%.2f'|format(cell.metric_value) }}"
+            style="background: hsl({{ hue | round(0) }}, 70%, 55%)">
+            {{ "%+.2f"|format(d) }}</span></td>
       {% else %}<td>-</td>{% endif %}
     {% endfor %}
   </tr>
   {% endfor %}
 </table>
-<p class="legend">Greener cells are higher recall; redder cells degraded most.</p>
+<p class="legend">Cells show the recall delta (late minus early); red cells degraded most.</p>
 {% endblock %}

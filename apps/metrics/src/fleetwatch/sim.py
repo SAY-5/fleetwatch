@@ -44,15 +44,21 @@ class DegradeSpec:
 
     ``per_window_drop`` is subtracted from the unit's recall once per window
     index (a window is ``frames_per_window`` consecutive frames). When
-    ``only_condition`` is set, the drop applies solely to frames whose condition
-    matches it, leaving other slices at the baseline recall. ``cliff_window``,
-    when set, applies the full ``per_window_drop * 1`` step abruptly at that one
-    window instead of gradually.
+    ``only_condition`` is set, the drop applies solely to frames whose full
+    condition matches it. The axis filters (``only_lighting``, ``only_weather``,
+    ``only_distance``) restrict the drop to frames whose value on that axis
+    matches, leaving other slices at the baseline recall, which is how a unit
+    that degrades only at night (across all weather and distance) is built.
+    ``cliff_window``, when set, applies the drop abruptly at that one window
+    instead of gradually.
     """
 
     unit_id: str
     per_window_drop: float = 0.0
     only_condition: Condition | None = None
+    only_lighting: Lighting | None = None
+    only_weather: Weather | None = None
+    only_distance: DistanceBand | None = None
     cliff_window: int | None = None
     cliff_drop: float = 0.0
 
@@ -78,6 +84,12 @@ def _effective_recall(cfg: FleetConfig, unit_id: str, window: int, cond: Conditi
         if spec.unit_id != unit_id:
             continue
         if spec.only_condition is not None and spec.only_condition != cond:
+            continue
+        if spec.only_lighting is not None and spec.only_lighting != cond.lighting:
+            continue
+        if spec.only_weather is not None and spec.only_weather != cond.weather:
+            continue
+        if spec.only_distance is not None and spec.only_distance != cond.distance_band:
             continue
         if spec.cliff_window is not None:
             if window >= spec.cliff_window:

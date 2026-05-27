@@ -11,6 +11,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .alerts import Alert, evaluate
+from .attribution import Attribution, attribute
 from .drift import compute_drift
 from .store import SliceMetricRow, UnitMetricRow
 
@@ -39,6 +40,7 @@ class HeatCell:
     unit_id: str
     condition: str
     metric_value: float
+    delta: float  # late-minus-early change of the metric for this cell
 
 
 @dataclass
@@ -49,6 +51,7 @@ class DashboardModel:
     alerts: list[Alert] = field(default_factory=list)
     heatmap: list[HeatCell] = field(default_factory=list)
     conditions: list[str] = field(default_factory=list)
+    attributions: list[Attribution] = field(default_factory=list)
 
 
 def _series(
@@ -104,7 +107,16 @@ def build_model(
                 series=series,
             )
         )
-        worst_cond, worst_val = _worst_condition(slice_rows, unit_id, cls, metric)
+        # Attribute the degradation to the driving condition axis value, and use
+        # it as the alert's worst-condition instead of a plain min over slices.
+        attr = attribute(unit_id, cls, slice_rows, metric)
+        if drift.drifting:
+            model.attributions.append(attr)
+        if drift.drifting and attr.driver_axis is not None:
+            worst_cond: str | None = f"{attr.driver_axis}={attr.driver_value}"
+            worst_val: float | None = attr.ranked[0].late_mean
+        else:
+            worst_cond, worst_val = _worst_condition(slice_rows, unit_id, cls, metric)
         alert = evaluate(
             drift,
             worst_condition=worst_cond if drift.drifting else None,
@@ -113,17 +125,35 @@ def build_model(
         if alert is not None:
             model.alerts.append(alert)
 
-    # Condition heatmap: mean metric per (unit, condition) over all classes.
+    # Condition heatmap: mean metric per (unit, condition) over all classes,
+    # plus the late-minus-early delta that colours the attribution heatmap.
     model.conditions = sorted({sr.condition for sr in slice_rows})
-    cell_acc: dict[tuple[str, str], list[float]] = defaultdict(list)
+    cell_acc: dict[tuple[str, str], list[tuple[int, float]]] = defaultdict(list)
     for sr in slice_rows:
-        cell_acc[(sr.unit_id, sr.condition)].append(getattr(sr, metric))
-    for (unit_id, cond), vals in sorted(cell_acc.items()):
+        cell_acc[(sr.unit_id, sr.condition)].append((sr.window_idx, getattr(sr, metric)))
+    for (unit_id, cond), pts in sorted(cell_acc.items()):
+        vals = [v for _, v in pts]
         model.heatmap.append(
-            HeatCell(unit_id=unit_id, condition=cond, metric_value=sum(vals) / len(vals))
+            HeatCell(
+                unit_id=unit_id,
+                condition=cond,
+                metric_value=sum(vals) / len(vals),
+                delta=_cell_delta(pts),
+            )
         )
 
     return model
+
+
+def _cell_delta(points: list[tuple[int, float]]) -> float:
+    """Late-segment mean minus early-segment mean for one heatmap cell."""
+    ordered = sorted(points)
+    if len(ordered) < 2:
+        return 0.0
+    half = max(1, len(ordered) // 3)
+    early = [v for _, v in ordered[:half]]
+    late = [v for _, v in ordered[-half:]]
+    return sum(late) / len(late) - sum(early) / len(early)
 
 
 def _worst_condition(
