@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.so
+.venv/
+venv/
+# C++
+apps/aggregator/build/
+*.o
+*.a
+# misc
+.DS_Store
+*.log
+examples/runs/*.local.jsonl

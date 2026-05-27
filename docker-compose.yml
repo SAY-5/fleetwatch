@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fleetwatch
+      POSTGRES_PASSWORD: fleetwatch
+      POSTGRES_DB: fleetwatch
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetwatch"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  metrics:
+    build:
+      context: .
+      dockerfile: apps/metrics/Dockerfile
+    environment:
+      FLEETWATCH_DSN: postgresql://fleetwatch:fleetwatch@postgres:5432/fleetwatch
+      FLEETWATCH_AGGREGATOR: /usr/local/bin/fleetwatch-aggregator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
