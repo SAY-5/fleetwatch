@@ -1,0 +1,110 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  POETRY_VERSION: "2.1.3"
+
+jobs:
+  lint-py:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pipx install "poetry==${POETRY_VERSION}"
+      - working-directory: apps/metrics
+        run: poetry install --no-interaction --no-ansi
+      - working-directory: apps/metrics
+        run: poetry run ruff check src tests
+
+  lint-cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "clang-format==18.1.8"
+      - run: |
+          clang-format --dry-run --Werror \
+            apps/aggregator/src/*.cpp apps/aggregator/src/*.h apps/aggregator/tests/*.cpp
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pipx install "poetry==${POETRY_VERSION}"
+      - working-directory: apps/metrics
+        run: poetry install --no-interaction --no-ansi
+      - working-directory: apps/metrics
+        run: poetry run mypy
+
+  test-py:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pipx install "poetry==${POETRY_VERSION}"
+      - working-directory: apps/metrics
+        run: poetry install --no-interaction --no-ansi
+      - working-directory: apps/metrics
+        run: poetry run pytest -m "not integration" --cov=fleetwatch --cov-report=term-missing
+
+  test-cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -S apps/aggregator -B apps/aggregator/build -DCMAKE_BUILD_TYPE=Release
+      - name: build
+        run: cmake --build apps/aggregator/build -j
+      - name: test
+        run: ctest --test-dir apps/aggregator/build --output-on-failure
+
+  test-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: build aggregator
+        run: |
+          cmake -S apps/aggregator -B apps/aggregator/build \
+            -DCMAKE_BUILD_TYPE=Release -DFWAGG_BUILD_TESTS=OFF
+          cmake --build apps/aggregator/build -j
+      - run: pipx install "poetry==${POETRY_VERSION}"
+      - working-directory: apps/metrics
+        run: poetry install --no-interaction --no-ansi
+      - name: integration tests (testcontainers postgres + c++ aggregator)
+        working-directory: apps/metrics
+        env:
+          FLEETWATCH_AGGREGATOR: ${{ github.workspace }}/apps/aggregator/build/fleetwatch-aggregator
+        run: poetry run pytest -m integration -p no:cacheprovider --no-cov
+
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build aggregator image
+        run: docker build -f apps/aggregator/Dockerfile -t fleetwatch-aggregator apps/aggregator
+      - name: build metrics image
+        run: docker build -f apps/metrics/Dockerfile -t fleetwatch-metrics .

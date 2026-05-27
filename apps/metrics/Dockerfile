@@ -16,7 +16,7 @@ COPY --from=agg /build/fleetwatch-aggregator /usr/local/bin/fleetwatch-aggregato
 COPY README.md /repo/README.md
 COPY apps/metrics /repo/apps/metrics
 WORKDIR /repo/apps/metrics
-RUN pip install --no-cache-dir poetry==1.8.3 && \
+RUN pip install --no-cache-dir poetry==2.1.3 && \
     poetry config virtualenvs.create false && \
     poetry install --only main --no-interaction --no-ansi
 EXPOSE 8000
