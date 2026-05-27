@@ -6,6 +6,7 @@ authors = ["Sai Asish Y <say.apm35@gmail.com>"]
 license = "MIT"
 readme = "../../README.md"
 packages = [{ include = "fleetwatch", from = "src" }]
+include = [{ path = "src/fleetwatch/templates/*.html", format = ["sdist", "wheel"] }]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.14"

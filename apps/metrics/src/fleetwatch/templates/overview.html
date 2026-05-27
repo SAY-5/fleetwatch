@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}FleetWatch overview{% endblock %}
+{% block content %}
+<h2>Fleet overview <span class="legend">run {{ run_id }}</span></h2>
+
+{% if model.alerts %}
+<h2>Trend alerts</h2>
+{% for a in model.alerts %}
+  <div class="alert" data-unit="{{ a.unit_id }}" data-class="{{ a.cls }}">{{ a.message }}</div>
+{% endfor %}
+{% else %}
+<p class="ok">No trend alerts firing.</p>
+{% endif %}
+
+<h2>Units</h2>
+<table>
+  <tr><th>unit</th><th>mean precision</th><th>mean recall</th>
+      <th>worst class</th><th>worst recall</th></tr>
+  {% for u in model.units %}
+  <tr>
+    <td><a href="/unit/{{ u.unit_id }}?run_id={{ run_id }}">{{ u.unit_id }}</a></td>
+    <td>{{ "%.3f"|format(u.mean_precision) }}</td>
+    <td>{{ "%.3f"|format(u.mean_recall) }}</td>
+    <td>{{ u.worst_class }}</td>
+    <td class="{{ 'bad' if u.worst_recall < 0.6 else 'ok' }}">
+      {{ "%.3f"|format(u.worst_recall) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Condition heatmap <span class="legend">mean recall per unit x condition</span></h2>
+<table>
+  <tr><th>unit</th>{% for c in model.conditions %}<th>{{ c }}</th>{% endfor %}</tr>
+  {% for u in model.units %}
+  <tr>
+    <td>{{ u.unit_id }}</td>
+    {% for c in model.conditions %}
+      {% set cell = (model.heatmap | selectattr("unit_id", "equalto", u.unit_id)
+                     | selectattr("condition", "equalto", c) | list | first) %}
+      {% if cell %}
+        {% set v = cell.metric_value %}
+        <td><span class="cell"
+            style="background: hsl({{ (v * 120) | round(0) }}, 70%, 55%)">
+            {{ "%.2f"|format(v) }}</span></td>
+      {% else %}<td>-</td>{% endif %}
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+<p class="legend">Greener cells are higher recall; redder cells degraded most.</p>
+{% endblock %}

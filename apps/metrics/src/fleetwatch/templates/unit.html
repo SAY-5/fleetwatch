@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}FleetWatch {{ unit_id }}{% endblock %}
+{% block content %}
+<h2>{{ unit_id }} <span class="legend">run {{ run_id }}</span></h2>
+
+{% if alerts %}
+<h2>Alerts for this unit</h2>
+{% for a in alerts %}
+  <div class="alert">{{ a.message }}</div>
+{% endfor %}
+{% endif %}
+
+<h2>Per-class drift</h2>
+<table>
+  <tr><th>class</th><th>slope (per window)</th><th>delta</th><th>status</th>
+      <th>recall series</th></tr>
+  {% for d in drift_rows %}
+  <tr>
+    <td>{{ d.cls }}</td>
+    <td>{{ "%.4f"|format(d.slope) }}</td>
+    <td class="{{ 'bad' if d.drifting else 'ok' }}">{{ "%.3f"|format(d.delta) }}</td>
+    <td>{{ 'DRIFTING' if d.drifting else 'stable' }}</td>
+    <td><code>{% for w, v in d.series %}{{ "%.2f"|format(v) }}{% if not loop.last %} {% endif %}{% endfor %}</code></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
