@@ -66,7 +66,9 @@ jobs:
       - working-directory: apps/metrics
         run: poetry install --no-interaction --no-ansi
       - working-directory: apps/metrics
-        run: poetry run pytest -m "not integration" --cov=fleetwatch --cov-report=term-missing
+        run: >-
+          poetry run pytest -m "not integration"
+          --cov=fleetwatch --cov-report=term-missing --cov-fail-under=88
 
   test-cpp:
     runs-on: ubuntu-latest

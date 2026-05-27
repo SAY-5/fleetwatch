@@ -1,8 +1,10 @@
 #include "json.h"
 
 #include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <sstream>
 #include <string>
 
@@ -115,11 +117,18 @@ class Reader {
     if (!any) {
       throw ParseError("expected number");
     }
-    try {
-      return std::stod(s_.substr(start, i_ - start));
-    } catch (...) {
+    // strtod is used instead of std::stod because std::stod throws
+    // std::out_of_range on subnormal results (values that underflow toward
+    // zero), which are perfectly valid JSON numbers. strtod returns the
+    // rounded value and signals range issues via errno without throwing.
+    const std::string token = s_.substr(start, i_ - start);
+    errno = 0;
+    char* end = nullptr;
+    const double v = std::strtod(token.c_str(), &end);
+    if (end != token.c_str() + token.size()) {
       throw ParseError("invalid number");
     }
+    return v;
   }
 
   void parse_box(Box& b) {
