@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from .alerts import Alert, evaluate
 from .attribution import Attribution, attribute
+from .changepoint import ChangePoint, ShiftKind, detect
 from .drift import compute_drift
 from .store import SliceMetricRow, UnitMetricRow
 
@@ -33,6 +34,9 @@ class DriftRow:
     delta: float
     drifting: bool
     series: list[tuple[int, float]]
+    change_kind: str = ShiftKind.NONE.value
+    change_window: int | None = None
+    change_magnitude: float = 0.0
 
 
 @dataclass
@@ -97,6 +101,7 @@ def build_model(
     for unit_id, cls in pairs:
         series = _series(unit_rows, unit_id, cls, metric)
         drift = compute_drift(unit_id, cls, series, metric, drop_threshold)
+        cp: ChangePoint = detect(series, threshold=drop_threshold)
         model.drift_rows.append(
             DriftRow(
                 unit_id=unit_id,
@@ -105,6 +110,9 @@ def build_model(
                 delta=drift.delta,
                 drifting=drift.drifting,
                 series=series,
+                change_kind=cp.kind.value,
+                change_window=cp.window,
+                change_magnitude=cp.magnitude,
             )
         )
         # Attribute the degradation to the driving condition axis value, and use

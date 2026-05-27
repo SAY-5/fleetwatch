@@ -13,15 +13,23 @@
 <h2>Per-class drift</h2>
 <table>
   <tr><th>class</th><th>slope (per window)</th><th>delta</th><th>status</th>
-      <th>recall series</th></tr>
+      <th>change point</th><th>recall series</th></tr>
   {% for d in drift_rows %}
   <tr>
     <td>{{ d.cls }}</td>
     <td>{{ "%.4f"|format(d.slope) }}</td>
     <td class="{{ 'bad' if d.drifting else 'ok' }}">{{ "%.3f"|format(d.delta) }}</td>
     <td>{{ 'DRIFTING' if d.drifting else 'stable' }}</td>
+    <td>
+      {% if d.change_kind != 'none' %}
+        <span class="bad">{{ d.change_kind }}</span> @ w{{ d.change_window }}
+        ({{ "%.2f"|format(d.change_magnitude) }})
+      {% else %}-{% endif %}
+    </td>
     <td><code>{% for w, v in d.series %}{{ "%.2f"|format(v) }}{% if not loop.last %} {% endif %}{% endfor %}</code></td>
   </tr>
   {% endfor %}
 </table>
+<p class="legend">A <strong>cliff</strong> is a sudden one-window drop (e.g. sensor failure);
+<strong>drift</strong> is a gradual decline (e.g. lens fogging).</p>
 {% endblock %}
